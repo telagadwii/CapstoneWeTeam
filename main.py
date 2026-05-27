@@ -21,6 +21,14 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     df = pd.read_excel("Emotion Dataset Merged.xlsx")
+
+    # hitung healing score
+    df["healing_score"] = (
+        -1.0 * df["anger_prob"]
+        - 0.5 * df["anxiety_prob"]
+        + 1.0 * df["acceptance_prob"]
+    )
+
     return df
 
 df = load_data()
@@ -74,9 +82,8 @@ st.divider()
 # ==================================================
 st.sidebar.header("⚙️ Filter Data")
 
-# filter confidence
-min_conf      = float(df["emotion_confidence"].min())
-max_conf      = float(df["emotion_confidence"].max())
+min_conf       = float(df["emotion_confidence"].min())
+max_conf       = float(df["emotion_confidence"].max())
 conf_threshold = st.sidebar.slider(
     "Minimum Confidence",
     min_value = round(min_conf, 2),
@@ -85,16 +92,30 @@ conf_threshold = st.sidebar.slider(
     step      = 0.01
 )
 
-# filter emosi
-emotion_options  = ["Semua"] + sorted(df["predicted_emotion"].unique().tolist())
+emotion_options         = ["Semua"] + sorted(df["predicted_emotion"].unique().tolist())
 selected_emotion_filter = st.sidebar.selectbox(
     "Filter Emosi",
     options = emotion_options,
     index   = 0
 )
 
+# filter healing score
+min_hs  = float(df["healing_score"].min())
+max_hs  = float(df["healing_score"].max())
+hs_range = st.sidebar.slider(
+    "Rentang Healing Score",
+    min_value = round(min_hs, 2),
+    max_value = round(max_hs, 2),
+    value     = (round(min_hs, 2), round(max_hs, 2)),
+    step      = 0.01
+)
+
 # terapkan filter
-df_filtered = df[df["emotion_confidence"] >= conf_threshold].copy()
+df_filtered = df[
+    (df["emotion_confidence"] >= conf_threshold) &
+    (df["healing_score"] >= hs_range[0]) &
+    (df["healing_score"] <= hs_range[1])
+].copy()
 
 if selected_emotion_filter != "Semua":
     df_filtered = df_filtered[
@@ -108,7 +129,7 @@ st.sidebar.markdown(f"**Total data:** `{len(df_filtered):,}` baris")
 # ==================================================
 st.subheader("📊 Ringkasan Data")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.metric("Total Data", f"{len(df_filtered):,}")
@@ -119,8 +140,8 @@ with col2:
     )
 with col3:
     st.metric(
-        "Rata-rata Anger Prob",
-        f"{df_filtered['anger_prob'].mean():.2%}"
+        "Rata-rata Healing Score",
+        f"{df_filtered['healing_score'].mean():.3f}"
     )
 with col4:
     dominant = (
@@ -128,6 +149,9 @@ with col4:
         if len(df_filtered) > 0 else "-"
     )
     st.metric("Emosi Dominan", dominant.capitalize())
+with col5:
+    pct_positive = (df_filtered["healing_score"] > 0).mean() * 100
+    st.metric("Teks Healing Positif", f"{pct_positive:.1f}%")
 
 st.divider()
 
@@ -143,7 +167,6 @@ bar_colors     = [EMOTION_COLORS.get(e, "#888888") for e in emotion_labels]
 
 col_left, col_right = st.columns(2)
 
-# bar chart jumlah
 with col_left:
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     bars = ax1.bar(
@@ -167,7 +190,6 @@ with col_left:
     ax1.spines[["top", "right"]].set_visible(False)
     st.pyplot(fig1)
 
-# bar chart persentase
 with col_right:
     total = sum(emotion_values)
     pcts  = [v / total * 100 for v in emotion_values]
@@ -193,15 +215,16 @@ with col_right:
 st.divider()
 
 # ==================================================
-# SECTION 3 — PROBABILITAS RATA-RATA
+# SECTION 3 — PROBABILITAS & HEALING SCORE
 # ==================================================
-st.subheader("🎯 Rata-rata Probabilitas per Emosi")
+st.subheader("🎯 Rata-rata Probabilitas & Healing Score")
 
-col_a, col_b, col_c = st.columns(3)
+col_a, col_b, col_c, col_d = st.columns(4)
 
 avg_anger      = df_filtered["anger_prob"].mean()
 avg_anxiety    = df_filtered["anxiety_prob"].mean()
 avg_acceptance = df_filtered["acceptance_prob"].mean()
+avg_healing    = df_filtered["healing_score"].mean()
 
 with col_a:
     st.metric("😡 Anger",      f"{avg_anger:.2%}")
@@ -212,11 +235,76 @@ with col_b:
 with col_c:
     st.metric("🌿 Acceptance", f"{avg_acceptance:.2%}")
     st.progress(float(avg_acceptance))
+with col_d:
+    st.metric(
+        "💚 Healing Score",
+        f"{avg_healing:.3f}",
+        delta = f"{'positif' if avg_healing > 0 else 'negatif'}"
+    )
 
 st.divider()
 
 # ==================================================
-# SECTION 4 — WORDCLOUD & TOP WORDS
+# SECTION 4 — DISTRIBUSI HEALING SCORE
+# ==================================================
+st.subheader("💚 Distribusi Healing Score")
+
+col_hs1, col_hs2 = st.columns(2)
+
+# histogram healing score per emosi
+with col_hs1:
+    fig_hs, ax_hs = plt.subplots(figsize=(6, 4))
+    for emotion in ["anger", "anxiety", "acceptance"]:
+        data = df_filtered[
+            df_filtered["predicted_emotion"] == emotion
+        ]["healing_score"]
+        ax_hs.hist(
+            data, bins=30, alpha=0.6,
+            label     = emotion.capitalize(),
+            color     = EMOTION_COLORS[emotion],
+            edgecolor = "white"
+        )
+    ax_hs.axvline(x=0, color="black", linestyle="--", linewidth=1, label="Netral (0)")
+    ax_hs.set_xlabel("Healing Score")
+    ax_hs.set_ylabel("Jumlah")
+    ax_hs.set_title("Distribusi Healing Score per Emosi", fontweight="bold")
+    ax_hs.legend()
+    ax_hs.spines[["top", "right"]].set_visible(False)
+    st.pyplot(fig_hs)
+
+# rata-rata healing score per emosi (bar chart)
+with col_hs2:
+    avg_hs_per_emotion = (
+        df_filtered.groupby("predicted_emotion")["healing_score"]
+        .mean()
+        .reindex(["anger", "anxiety", "acceptance"])
+    )
+    fig_hs2, ax_hs2 = plt.subplots(figsize=(6, 4))
+    bars_hs = ax_hs2.bar(
+        avg_hs_per_emotion.index,
+        avg_hs_per_emotion.values,
+        color     = [EMOTION_COLORS.get(e, "#888") for e in avg_hs_per_emotion.index],
+        edgecolor = "white",
+        width     = 0.5
+    )
+    ax_hs2.axhline(y=0, color="black", linestyle="--", linewidth=1)
+    ax_hs2.set_title("Rata-rata Healing Score per Emosi", fontweight="bold")
+    ax_hs2.set_xlabel("Emosi")
+    ax_hs2.set_ylabel("Healing Score")
+    for bar, val in zip(bars_hs, avg_hs_per_emotion.values):
+        ax_hs2.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.005 if val >= 0 else bar.get_height() - 0.02,
+            f"{val:.3f}", ha="center", va="bottom",
+            fontsize=10, fontweight="bold"
+        )
+    ax_hs2.spines[["top", "right"]].set_visible(False)
+    st.pyplot(fig_hs2)
+
+st.divider()
+
+# ==================================================
+# SECTION 5 — WORDCLOUD & TOP WORDS
 # ==================================================
 st.subheader("☁️ Word Cloud & Kata Terbanyak per Emosi")
 
@@ -241,7 +329,6 @@ else:
 
     col_wc, col_bar = st.columns(2)
 
-    # wordcloud
     with col_wc:
         st.markdown(f"**Word Cloud — {selected_emotion.capitalize()}**")
         wc = WordCloud(
@@ -259,7 +346,6 @@ else:
         ax_wc.axis("off")
         st.pyplot(fig_wc)
 
-    # top words bar chart
     with col_bar:
         st.markdown(f"**Top {TOP_N} Kata — {selected_emotion.capitalize()}**")
         top_words = sorted(
@@ -291,7 +377,7 @@ else:
 st.divider()
 
 # ==================================================
-# SECTION 5 — DISTRIBUSI CONFIDENCE
+# SECTION 6 — DISTRIBUSI CONFIDENCE
 # ==================================================
 st.subheader("📉 Distribusi Confidence Score per Emosi")
 
@@ -315,7 +401,7 @@ st.pyplot(fig_conf)
 st.divider()
 
 # ==================================================
-# SECTION 6 — EKSPLORASI DATA
+# SECTION 7 — EKSPLORASI DATA
 # ==================================================
 st.subheader("🔍 Eksplorasi Data")
 
@@ -339,13 +425,12 @@ st.dataframe(
     df_explore[[
         "input_clean", "input_no_punct",
         "anger_prob", "anxiety_prob", "acceptance_prob",
-        "predicted_emotion", "emotion_confidence"
+        "predicted_emotion", "emotion_confidence", "healing_score"
     ]].reset_index(drop=True),
     use_container_width = True,
     height              = 400
 )
 
-# tombol download
 csv = df_explore.to_csv(index=False).encode("utf-8")
 st.download_button(
     label     = "⬇️ Download Data Terfilter (CSV)",

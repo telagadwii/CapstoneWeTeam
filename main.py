@@ -20,7 +20,7 @@ st.set_page_config(
 # ==================================================
 @st.cache_data
 def load_data():
-    df = pd.read_excel("Emotion_Dataset_Merged.xlsx")
+    df = pd.read_excel("Emotion Dataset Merged.xlsx")
     return df
 
 df = load_data()

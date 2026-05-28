@@ -21,14 +21,6 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     df = pd.read_excel("Emotion Dataset Merged.xlsx")
-
-    # hitung healing score
-    df["healing_score"] = (
-        -1.0 * df["anger_prob"]
-        - 0.5 * df["anxiety_prob"]
-        + 1.0 * df["acceptance_prob"]
-    )
-
     return df
 
 df = load_data()
@@ -99,9 +91,8 @@ selected_emotion_filter = st.sidebar.selectbox(
     index   = 0
 )
 
-# filter healing score
-min_hs  = float(df["healing_score"].min())
-max_hs  = float(df["healing_score"].max())
+min_hs   = float(df["healing_score"].min())
+max_hs   = float(df["healing_score"].max())
 hs_range = st.sidebar.slider(
     "Rentang Healing Score",
     min_value = round(min_hs, 2),
@@ -113,8 +104,8 @@ hs_range = st.sidebar.slider(
 # terapkan filter
 df_filtered = df[
     (df["emotion_confidence"] >= conf_threshold) &
-    (df["healing_score"] >= hs_range[0]) &
-    (df["healing_score"] <= hs_range[1])
+    (df["healing_score"]      >= hs_range[0])    &
+    (df["healing_score"]      <= hs_range[1])
 ].copy()
 
 if selected_emotion_filter != "Semua":
@@ -215,9 +206,9 @@ with col_right:
 st.divider()
 
 # ==================================================
-# SECTION 3 — PROBABILITAS & HEALING SCORE
+# SECTION 3 — PROBABILITAS RATA-RATA
 # ==================================================
-st.subheader("🎯 Rata-rata Probabilitas & Healing Score")
+st.subheader("🎯 Rata-rata Probabilitas per Emosi")
 
 col_a, col_b, col_c, col_d = st.columns(4)
 
@@ -239,7 +230,7 @@ with col_d:
     st.metric(
         "💚 Healing Score",
         f"{avg_healing:.3f}",
-        delta = f"{'positif' if avg_healing > 0 else 'negatif'}"
+        delta = "positif" if avg_healing > 0 else "negatif"
     )
 
 st.divider()
@@ -251,19 +242,19 @@ st.subheader("💚 Distribusi Healing Score")
 
 col_hs1, col_hs2 = st.columns(2)
 
-# histogram healing score per emosi
 with col_hs1:
     fig_hs, ax_hs = plt.subplots(figsize=(6, 4))
     for emotion in ["anger", "anxiety", "acceptance"]:
         data = df_filtered[
             df_filtered["predicted_emotion"] == emotion
         ]["healing_score"]
-        ax_hs.hist(
-            data, bins=30, alpha=0.6,
-            label     = emotion.capitalize(),
-            color     = EMOTION_COLORS[emotion],
-            edgecolor = "white"
-        )
+        if len(data) > 0:
+            ax_hs.hist(
+                data, bins=30, alpha=0.6,
+                label     = emotion.capitalize(),
+                color     = EMOTION_COLORS[emotion],
+                edgecolor = "white"
+            )
     ax_hs.axvline(x=0, color="black", linestyle="--", linewidth=1, label="Netral (0)")
     ax_hs.set_xlabel("Healing Score")
     ax_hs.set_ylabel("Jumlah")
@@ -272,12 +263,12 @@ with col_hs1:
     ax_hs.spines[["top", "right"]].set_visible(False)
     st.pyplot(fig_hs)
 
-# rata-rata healing score per emosi (bar chart)
 with col_hs2:
     avg_hs_per_emotion = (
         df_filtered.groupby("predicted_emotion")["healing_score"]
         .mean()
         .reindex(["anger", "anxiety", "acceptance"])
+        .dropna()
     )
     fig_hs2, ax_hs2 = plt.subplots(figsize=(6, 4))
     bars_hs = ax_hs2.bar(
@@ -386,12 +377,13 @@ for emotion in ["anger", "anxiety", "acceptance"]:
     data = df_filtered[
         df_filtered["predicted_emotion"] == emotion
     ]["emotion_confidence"]
-    ax_conf.hist(
-        data, bins=30, alpha=0.6,
-        label     = emotion.capitalize(),
-        color     = EMOTION_COLORS[emotion],
-        edgecolor = "white"
-    )
+    if len(data) > 0:
+        ax_conf.hist(
+            data, bins=30, alpha=0.6,
+            label     = emotion.capitalize(),
+            color     = EMOTION_COLORS[emotion],
+            edgecolor = "white"
+        )
 ax_conf.set_xlabel("Confidence Score")
 ax_conf.set_ylabel("Jumlah")
 ax_conf.legend()
